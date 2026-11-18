@@ -42,6 +42,7 @@ test('ad hoc signing only runs for a Mac build when asked, and fails loudly if s
   assert.equal(calls.length, 0, 'the temporary per-chip copies of a universal build stay unsigned');
   await adhoc(ctx('darwin'), { run: (...a) => calls.push(a) });
   assert.deepEqual(calls.map((c) => c[1].slice(0, 3)), [['--force', '--deep', '--sign'], ['--verify', '--deep', '--strict']]);
+  assert.ok(calls[0][1].includes('--entitlements') && calls[0][1].some((x) => /entitlements.mac.plist$/.test(x)), 'signed with the entitlements');
   await assert.rejects(adhoc(ctx('darwin'), { run: () => { throw new Error('codesign failed'); } }), /codesign failed/);
   delete process.env.HL_ADHOC_SIGN;
 });

@@ -19,7 +19,10 @@ exports.default = async function adhocSign(context, deps = {}) {
   if (/-temp$/.test(context.appOutDir)) return;
   const run = deps.run || execFileSync;
   const app = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
-  run('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' });
+  // The entitlements go in with the signature: a signature made without them carries none, and the microphone and camera
+  // entries would be lost from the finished app.
+  const entitlements = path.join(__dirname, 'entitlements.mac.plist');
+  run('codesign', ['--force', '--deep', '--sign', '-', '--entitlements', entitlements, app], { stdio: 'inherit' });
   run('codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' });
   console.log(`Ad hoc signed ${app}`);
 };
