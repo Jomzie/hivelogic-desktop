@@ -41,6 +41,21 @@ jobs:
             codesign -d --entitlements - "$app" 2>&1 | grep -E "audio-input|camera" || { echo "::error::microphone/camera entitlements missing in $app"; exit 1; }
           done
           ls -la dist
+      - name: Smoke test, the packaged app really starts on a Mac
+        run: |
+          APP="$(ls -d dist/mac-universal/*.app | head -1)"
+          LOG="$HOME/Library/Logs/HiveLogic/hivelogic.log"
+          rm -f "$LOG"
+          HL_SMOKE_TEST=1 HL_APP_URL="file://$PWD/assets/offline.html" "$APP/Contents/MacOS/HiveLogic" --no-sandbox &
+          PID=$!
+          for i in $(seq 1 60); do
+            kill -0 $PID 2>/dev/null || break
+            sleep 1
+          done
+          kill -0 $PID 2>/dev/null && { echo "::error::the app is still running after 60 seconds"; kill $PID; }
+          echo "--- log ---"; cat "$LOG" || { echo "::error::no log file: the app never started"; exit 1; }
+          grep -q "^.* launch " "$LOG" || { echo "::error::no launch line in the log"; exit 1; }
+          grep -q "smoke ok" "$LOG" || { echo "::error::the window never opened or the page never finished"; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: HiveLogic-Mac

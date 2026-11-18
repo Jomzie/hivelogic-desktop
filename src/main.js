@@ -15,6 +15,7 @@ const {
   shell,
   ipcMain,
   crashReporter,
+  dialog,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -51,6 +52,7 @@ try {
   log = createLogger(app.getPath('logs'));
   crashReporter.start({ uploadToServer: false, compress: true });
 } catch (_) { /* logging is a courtesy */ }
+log(`launch ${app.getVersion()} ${process.platform} ${process.arch} electron ${process.versions.electron}`);
 process.on('uncaughtException', (err) => log('uncaughtException: ' + ((err && err.stack) || err)));
 process.on('unhandledRejection', (err) => log('unhandledRejection: ' + ((err && err.stack) || err)));
 
@@ -254,6 +256,11 @@ function overlaySender(event) {
 /* ------------------------------------------------------------------ */
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
+  // Another HiveLogic is already running (on a Mac it can sit in the background with no window). Say so instead of vanishing.
+  log('another HiveLogic is already running; this one is quitting');
+  try {
+    dialog.showErrorBox('HiveLogic is already open', 'Another HiveLogic is already running. Find it in the Dock, or quit it (Cmd+Q) and open HiveLogic again.');
+  } catch (_) {}
   app.quit();
 } else {
   app.on('second-instance', () => {
@@ -387,6 +394,18 @@ function createWindow() {
 
   log(`start ${app.getVersion()} on ${process.platform} ${process.arch}, electron ${process.versions.electron}`);
   mainWindow.loadURL(APP_URL);
+
+  if (process.env.HL_SMOKE_TEST === '1') {
+    mainWindow.webContents.once('did-finish-load', () => {
+      log('smoke ok: window created and page loaded');
+      setTimeout(() => app.quit(), 500);
+    });
+    mainWindow.webContents.once('did-fail-load', (_e, code, desc) => {
+      log(`smoke ok: window created, page did not load (${code} ${desc})`);
+      setTimeout(() => app.quit(), 500);
+    });
+    setTimeout(() => { log('smoke FAILED: nothing loaded in 40 seconds'); app.exit(2); }, 40000);
+  }
 
   // A page process that dies is reloaded instead of taking the window with it (and after a few quick repeats, the offline
   // page with its Retry button rather than a reload loop). The reason goes in the log.
