@@ -8,7 +8,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "build:win": "electron-builder --win nsis --x64"
+    "build:win": "electron-builder --win nsis --x64",
+    "build:mac": "electron-builder --mac --universal"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
@@ -51,6 +52,54 @@
         "repo": "hivelogic-desktop",
         "releaseType": "release"
       }
-    ]
+    ],
+    "afterPack": "build/adhoc-sign.js",
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.business",
+      "artifactName": "HiveLogic-Mac.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "HiveLogic uses the microphone for Reina voice and for calls, only when you ask it to.",
+        "NSCameraUsageDescription": "HiveLogic uses the camera for video calls, only when you turn video on."
+      }
+    },
+    "dmg": {
+      "title": "HiveLogic",
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 140,
+          "y": 190,
+          "type": "file"
+        },
+        {
+          "x": 400,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
   }
 }

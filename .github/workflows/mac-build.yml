@@ -1,0 +1,50 @@
+name: Build the Mac app
+
+# Builds HiveLogic for Mac on a GitHub Mac machine and keeps the result as a downloadable file (Actions run page, "Artifacts").
+# Not published to a release: nobody's auto-update is touched. Run it by hand from the Actions tab, or it runs on a push to a
+# branch named feat/mac-*.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feat/mac-*']
+
+permissions:
+  contents: read
+
+jobs:
+  build_mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build the Mac app (ad hoc signed, not notarized)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          HL_ADHOC_SIGN: '1'
+        run: |
+          npm run build:mac -- --publish never -c.mac.identity=null
+          for app in dist/mac*/*.app; do
+            codesign --verify --deep --strict "$app"
+            echo "Signature ok: $app"
+          done
+          echo "Mac app Info.plist keys:"
+          for app in dist/mac*/*.app; do
+            /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$app/Contents/Info.plist"
+            /usr/libexec/PlistBuddy -c "Print :NSCameraUsageDescription" "$app/Contents/Info.plist"
+            codesign -d --entitlements - "$app" 2>&1 | grep -E "audio-input|camera" || { echo "::error::microphone/camera entitlements missing in $app"; exit 1; }
+          done
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HiveLogic-Mac
+          path: |
+            dist/HiveLogic-Mac.dmg
+            dist/HiveLogic-Mac.zip
+          if-no-files-found: error

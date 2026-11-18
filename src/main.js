@@ -14,6 +14,7 @@ const {
   session,
   shell,
   ipcMain,
+  crashReporter,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -26,6 +27,7 @@ const {
 const { createNativeSpeechService } = require('./native-speech');
 const { createSpeechAuthorization } = require('./speech-authorization');
 const { createScreenAnnotate } = require('./screen-annotate');
+const { createCrashRecovery, createLogger } = require('./crash-recovery');
 
 // HL_APP_URL / HL_SIMULATE_OFFLINE / HL_DEBUG are dev-only overrides.
 const APP_URL = process.env.HL_APP_URL || 'https://hivelogic-live.vercel.app/';
@@ -41,6 +43,16 @@ function isCacheableHost(hostname) {
     hostname.endsWith('.supabase.in')
   );
 }
+
+// The log lives in the standard logs folder (on a Mac: ~/Library/Logs/HiveLogic). Crash dumps stay on the machine.
+const crashRecovery = createCrashRecovery();
+let log = () => {};
+try {
+  log = createLogger(app.getPath('logs'));
+  crashReporter.start({ uploadToServer: false, compress: true });
+} catch (_) { /* logging is a courtesy */ }
+process.on('uncaughtException', (err) => log('uncaughtException: ' + ((err && err.stack) || err)));
+process.on('unhandledRejection', (err) => log('unhandledRejection: ' + ((err && err.stack) || err)));
 
 let mainWindow = null;
 let cache = null;
@@ -373,7 +385,18 @@ function createWindow() {
 
   if (state.maximized) mainWindow.maximize();
 
+  log(`start ${app.getVersion()} on ${process.platform} ${process.arch}, electron ${process.versions.electron}`);
   mainWindow.loadURL(APP_URL);
+
+  // A page process that dies is reloaded instead of taking the window with it (and after a few quick repeats, the offline
+  // page with its Retry button rather than a reload loop). The reason goes in the log.
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    const r = crashRecovery.onRendererGone(details);
+    log(`page process gone: ${r.reason} (exit ${details && details.exitCode}) -> ${r.action}`);
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (r.action === 'reload') mainWindow.webContents.reload();
+    else if (r.action === 'give-up') mainWindow.loadFile(path.join(__dirname, '..', 'assets', 'offline.html'));
+  });
 
   // First-ever launch with no internet and no cache → branded offline page.
   mainWindow.webContents.on('did-fail-load', (_e, code, _desc, failedUrl, isMainFrame) => {
@@ -425,6 +448,9 @@ function createWindow() {
 /* ------------------------------------------------------------------ */
 function setupAutoUpdate() {
   if (!app.isPackaged) return;
+  // A Mac app that is not signed by Apple cannot be updated by electron-updater (it refuses, every 30 minutes). Until the Mac
+  // build is signed, a new version is installed by hand. HL_MAC_AUTOUPDATE=1 switches it back on for a signed build.
+  if (process.platform === 'darwin' && process.env.HL_MAC_AUTOUPDATE !== '1') return;
   let autoUpdater;
   try {
     ({ autoUpdater } = require('electron-updater'));
@@ -664,6 +690,10 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('child-process-gone', (_e, details) => {
+  log(`child process gone: ${details && details.type} ${details && details.reason} (exit ${details && details.exitCode})`);
 });
 
 app.on('window-all-closed', () => {
