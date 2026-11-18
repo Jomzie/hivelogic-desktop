@@ -14,6 +14,9 @@ const { execFileSync } = require('node:child_process');
 exports.default = async function adhocSign(context, deps = {}) {
   if (context.electronPlatformName !== 'darwin') return;
   if (process.env.HL_ADHOC_SIGN !== '1') return;
+  // A universal app is made by merging a per-chip copy of each kind. Those temporary copies must stay unsigned: two signed copies
+  // never match byte for byte and the merge refuses. Only the final app (appOutDir without -temp) is signed.
+  if (/-temp$/.test(context.appOutDir)) return;
   const run = deps.run || execFileSync;
   const app = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
   run('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' });

@@ -38,6 +38,8 @@ test('ad hoc signing only runs for a Mac build when asked, and fails loudly if s
   process.env.HL_ADHOC_SIGN = '1';
   await adhoc(ctx('win32'), { run: (...a) => calls.push(a) });
   assert.equal(calls.length, 0, 'never on Windows');
+  await adhoc({ ...ctx('darwin'), appOutDir: '/out/mac-universal-x64-temp' }, { run: (...a) => calls.push(a) });
+  assert.equal(calls.length, 0, 'the temporary per-chip copies of a universal build stay unsigned');
   await adhoc(ctx('darwin'), { run: (...a) => calls.push(a) });
   assert.deepEqual(calls.map((c) => c[1].slice(0, 3)), [['--force', '--deep', '--sign'], ['--verify', '--deep', '--strict']]);
   await assert.rejects(adhoc(ctx('darwin'), { run: () => { throw new Error('codesign failed'); } }), /codesign failed/);
