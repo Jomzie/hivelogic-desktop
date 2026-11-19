@@ -16,15 +16,18 @@ const {
   ipcMain,
   crashReporter,
   dialog,
+  desktopCapturer,
+  systemPreferences,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { OfflineCache, MAX_BODY_BYTES } = require('./cache');
 const {
   TRUSTED_APP_ORIGIN,
-  installAudioPermissionPolicy,
+  installCallMediaPolicy,
   isTrustedIpcSender,
 } = require('./permissions');
+const { installDisplayCapture } = require('./display-capture');
 const { createNativeSpeechService } = require('./native-speech');
 const { createSpeechAuthorization } = require('./speech-authorization');
 const { createScreenAnnotate } = require('./screen-annotate');
@@ -662,7 +665,13 @@ ipcMain.on('hl-overlay-panic', (event) => {
 /* ------------------------------------------------------------------ */
 app.whenReady().then(() => {
   cache = new OfflineCache(path.join(app.getPath('userData'), 'offline-cache'));
-  installAudioPermissionPolicy(session.defaultSession, TRUSTED_APP_ORIGIN);
+  // Microphone, camera and screen sharing for calls, from the HiveLogic site only (see permissions.js and display-capture.js).
+  installCallMediaPolicy(session.defaultSession, TRUSTED_APP_ORIGIN);
+  installDisplayCapture(
+    session.defaultSession,
+    { desktopCapturer, dialog, systemPreferences, shell, BrowserWindow },
+    TRUSTED_APP_ORIGIN
+  );
   installNetworkLayer(session.defaultSession);
 
   Menu.setApplicationMenu(
