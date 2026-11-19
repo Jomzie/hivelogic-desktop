@@ -669,7 +669,7 @@ app.whenReady().then(() => {
   installCallMediaPolicy(session.defaultSession, TRUSTED_APP_ORIGIN);
   installDisplayCapture(
     session.defaultSession,
-    { desktopCapturer, dialog, systemPreferences, shell, BrowserWindow },
+    { desktopCapturer, dialog, systemPreferences, shell, BrowserWindow, log: (m) => log(m) },
     TRUSTED_APP_ORIGIN
   );
   installNetworkLayer(session.defaultSession);

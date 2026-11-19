@@ -57,7 +57,7 @@ test('the installed handlers answer once and fail closed', () => {
 });
 
 // ---- screen sharing handler ---------------------------------------------------------------------------------
-function share({ platform = 'darwin', status = 'granted', sources, response = 0, origin = TRUSTED_APP_ORIGIN, throwOn } = {}) {
+function share({ platform = 'darwin', status = 'granted', sources, response = 0, origin = TRUSTED_APP_ORIGIN, throwOn, windowLookupThrows = false, notes } = {}) {
   let handler;
   let options;
   const dialogs = [];
@@ -70,7 +70,8 @@ function share({ platform = 'darwin', status = 'granted', sources, response = 0,
       dialog: { showMessageBox: async (_p, o) => { dialogs.push(o); return { response: typeof response === 'function' ? response(o) : response }; } },
       systemPreferences: { getMediaAccessStatus: () => status },
       shell: { openExternal: (u) => opened.push(u) },
-      BrowserWindow: { fromWebContents: () => undefined },
+      BrowserWindow: { getFocusedWindow: () => { if (windowLookupThrows) throw new TypeError('bad window'); return undefined; } },
+      log: (m) => { if (notes) notes.push(m); },
     },
     TRUSTED_APP_ORIGIN
   );
@@ -121,4 +122,19 @@ test('another site, no screens, or an error: nothing is shared and no dialog is 
   assert.deepEqual(await none.run(), {});
   const boom = share({ throwOn: 'sources' });
   assert.deepEqual(await boom.run(), {});
+});
+
+test('a failed window lookup never ends the share, and every step is written to the log', async () => {
+  const notes = [];
+  const s = share({ windowLookupThrows: true, response: 0, notes });
+  assert.deepEqual(await s.run(), { video: { id: 'screen:1', name: 'Entire screen' } });
+  assert.deepEqual(notes, ['screen share asked for', 'screen recording permission: granted', 'screens found: 1', 'screen share started']);
+  const denied = [];
+  const d = share({ status: 'denied', response: 1, notes: denied });
+  await d.run();
+  assert.ok(denied.includes('screen recording permission: denied'));
+  const failed = [];
+  const f = share({ throwOn: 'sources', notes: failed });
+  await f.run();
+  assert.match(failed.at(-1), /^screen share failed: x$/);
 });

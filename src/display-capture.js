@@ -28,7 +28,8 @@ function screenLabel(source, index) {
 }
 
 function installDisplayCapture(electronSession, deps, trustedOrigin) {
-  const { desktopCapturer, dialog, systemPreferences, shell, BrowserWindow, platform } = deps;
+  const { desktopCapturer, dialog, systemPreferences, shell, BrowserWindow, platform, log } = deps;
+  const note = (m) => { try { if (typeof log === 'function') log(m); } catch (_) { /* logging must never break a share */ } };
   const os = platform || process.platform;
 
   electronSession.setDisplayMediaRequestHandler(
@@ -41,15 +42,24 @@ function installDisplayCapture(electronSession, deps, trustedOrigin) {
         else callback({});
       };
       try {
-        if (!isTrustedOrigin(requestOrigin(request), trustedOrigin)) return answer(null);
+        if (!isTrustedOrigin(requestOrigin(request), trustedOrigin)) {
+          note('screen share refused: not the HiveLogic site');
+          return answer(null);
+        }
 
-        const parent = request && request.frame && BrowserWindow && BrowserWindow.fromWebContents
-          ? BrowserWindow.fromWebContents(request.frame.webContents || null) || undefined
-          : undefined;
+        // The window the question sits on. A lookup that fails must never end the share, so it has its own guard: the app's focused window, or none.
+        let parent;
+        try {
+          parent = (BrowserWindow && BrowserWindow.getFocusedWindow && BrowserWindow.getFocusedWindow()) || undefined;
+        } catch (_) {
+          parent = undefined;
+        }
+        note('screen share asked for');
 
         // macOS: Screen Recording must be on for this app, or the capture is a black picture.
         if (os === 'darwin' && systemPreferences && systemPreferences.getMediaAccessStatus) {
           const status = systemPreferences.getMediaAccessStatus('screen');
+          note('screen recording permission: ' + status);
           if (status === 'denied' || status === 'restricted') {
             const pick = await dialog.showMessageBox(parent, {
               type: 'info',
@@ -65,6 +75,7 @@ function installDisplayCapture(electronSession, deps, trustedOrigin) {
         }
 
         const sources = await desktopCapturer.getSources({ types: ['screen'] });
+        note('screens found: ' + (sources ? sources.length : 0));
         if (!sources || !sources.length) return answer(null);
 
         // Up to four screens get a button each; more than that shares the first and says so in the label.
@@ -79,9 +90,14 @@ function installDisplayCapture(electronSession, deps, trustedOrigin) {
           defaultId: 0,
           cancelId: buttons.length - 1,
         });
-        if (result.response >= choices.length) return answer(null);
+        if (result.response >= choices.length) {
+          note('screen share cancelled');
+          return answer(null);
+        }
+        note('screen share started');
         return answer({ video: choices[result.response] });
-      } catch (_) {
+      } catch (e) {
+        note('screen share failed: ' + (e && e.message ? e.message : e));
         return answer(null);
       }
     },
